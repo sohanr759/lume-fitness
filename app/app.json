@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "Lume",
+    "slug": "lume",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "lume",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": false,
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.lume.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Lume uses your camera to log meals from photos.",
+        "NSPhotoLibraryUsageDescription": "Lume reads photos so you can log past meals."
+      }
+    },
+    "android": {
+      "package": "com.lume.app",
+      "permissions": [
+        "CAMERA"
+      ]
+    },
+    "web": {
+      "output": "single",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-camera",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Lume to access your photos to log meals."
+        }
+      ],
+      "expo-asset"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

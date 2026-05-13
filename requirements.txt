@@ -1,0 +1,47 @@
+# Lume — Project Requirements
+# This file lists all external tools, accounts, and API keys required to run Lume.
+# No Python dependencies — the app is React Native (Expo) and the backend is Deno (Supabase Edge Functions).
+
+# ── CLI Tools ────────────────────────────────────────────────────────────────
+# Node.js >= 20          https://nodejs.org
+# npm >= 10              (bundled with Node)
+# Expo CLI               npm install -g expo-cli
+# Supabase CLI           npm install -g supabase
+# EAS CLI (builds)       npm install -g eas-cli
+
+# ── Accounts ─────────────────────────────────────────────────────────────────
+# Supabase account       https://supabase.com   (free tier is sufficient)
+# Expo account           https://expo.dev        (needed for EAS builds)
+
+# ── API Keys (set as Supabase secrets) ───────────────────────────────────────
+# GEMINI_API_KEY         https://aistudio.google.com/apikey
+#                        Free tier: ~1,500 requests/day — sufficient for <=10 users
+#
+# USDA_API_KEY           https://fdc.nal.usda.gov/api-key-signup.html
+#                        Free, no rate limit for normal use
+
+# ── Environment Variables (app/.env) ─────────────────────────────────────────
+# EXPO_PUBLIC_SUPABASE_URL        From Supabase project settings → API
+# EXPO_PUBLIC_SUPABASE_ANON_KEY   From Supabase project settings → API
+
+# ── App Dependencies (see app/package.json) ──────────────────────────────────
+# expo ~52
+# expo-router ~4
+# expo-camera ~16
+# expo-file-system ~18
+# expo-blur ~14
+# expo-haptics ~14
+# expo-image ~2
+# expo-image-picker ~16
+# react-native 0.76
+# react-native-mmkv ^3        (local storage — no auth required)
+# react-native-reanimated ~3
+# react-native-svg 15
+# @supabase/supabase-js ^2    (used only to invoke edge functions)
+
+# ── Edge Function Runtime ─────────────────────────────────────────────────────
+# Deno (managed by Supabase CLI — no separate install needed)
+
+# ── No database, no auth, no cloud storage ───────────────────────────────────
+# All logs are stored on-device via MMKV.
+# Edge functions are stateless: they call Gemini + USDA/OpenFoodFacts and return JSON.
