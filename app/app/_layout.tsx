@@ -53,21 +53,21 @@ export default function RootLayout() {
   const prevSessionRef = useRef<Session | null | undefined>(undefined);
 
   useEffect(() => {
+    mounted.current = true;
     if (AUTH_DISABLED) {
       // Seed a guest profile if the cache is empty so all screens render correctly.
       initStorage().then(async () => {
         if (!getProfileCached()) await saveProfile(GUEST_PROFILE);
-        setReady(true);
+        if (mounted.current) setReady(true);
       });
-      return;
+      return () => { mounted.current = false; };
     }
-    initStorage().then(() => setReady(true));
+    initStorage().then(() => { if (mounted.current) setReady(true); });
   }, []);
 
   // Auth state listener — also clears the OAuth wait when session arrives.
   useEffect(() => {
     if (AUTH_DISABLED) return;
-    mounted.current = true;
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       if (!mounted.current) return;
       setSession(s);
