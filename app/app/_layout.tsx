@@ -5,9 +5,25 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Session } from '@supabase/supabase-js';
 import { colors } from '@/lib/theme';
-import { fetchProfile, getProfileCached, type Profile } from '@/lib/profile';
+import { fetchProfile, getProfileCached, saveProfile, type Profile } from '@/lib/profile';
 import { initStorage } from '@/lib/cache';
 import { supabase } from '@/lib/supabase';
+
+// When EXPO_PUBLIC_AUTH_DISABLED=true the entire auth/onboarding gate is
+// bypassed. The app renders immediately with a guest profile so every other
+// feature (food log, workout, history) can be tested without a Supabase
+// account. Flip the flag back to re-enable auth with zero code changes.
+const AUTH_DISABLED = process.env.EXPO_PUBLIC_AUTH_DISABLED === 'true';
+
+const GUEST_PROFILE: Omit<Profile, 'goal_kcal' | 'created_at'> = {
+  name: 'Guest',
+  sex: 'male',
+  age: 25,
+  height_cm: 175,
+  weight_kg: 70,
+  goal: 'maintain',
+  activity: 'moderate',
+};
 
 // Capture URL at module-load time — before Expo Router processes/clears it.
 const _initHash = typeof window !== 'undefined' ? window.location.hash : '';
@@ -33,11 +49,20 @@ export default function RootLayout() {
   const mounted = useRef(false);
 
   useEffect(() => {
+    if (AUTH_DISABLED) {
+      // Seed a guest profile if the cache is empty so all screens render correctly.
+      initStorage().then(async () => {
+        if (!getProfileCached()) await saveProfile(GUEST_PROFILE);
+        setReady(true);
+      });
+      return;
+    }
     initStorage().then(() => setReady(true));
   }, []);
 
   // Auth state listener — also clears the OAuth wait when session arrives.
   useEffect(() => {
+    if (AUTH_DISABLED) return;
     mounted.current = true;
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       if (!mounted.current) return;
@@ -54,6 +79,7 @@ export default function RootLayout() {
   // session === undefined means auth hasn't resolved yet — skip.
   // session === null means signed out — clear profile immediately.
   useEffect(() => {
+    if (AUTH_DISABLED) return;
     if (session === undefined) return;
     if (!session) {
       setProfile(null);
@@ -68,6 +94,7 @@ export default function RootLayout() {
   // Manually exchange OAuth tokens from the URL — handles /callback and any other
   // landing route. callback.tsx is passive; _layout owns the exchange.
   useEffect(() => {
+    if (AUTH_DISABLED) return;
     if (!waitingForOAuth || Platform.OS !== 'web' || typeof window === 'undefined') return;
 
     const hash = window.location.hash;
@@ -107,6 +134,7 @@ export default function RootLayout() {
 
   // Route guard — waits for OAuth exchange, storage init, auth, and profile fetch.
   useEffect(() => {
+    if (AUTH_DISABLED) return;
     console.log('[guard]', { ready, session: session ? 'SET' : session === null ? 'NULL' : 'UNDEFINED', profile: profile ? 'SET' : profile === null ? 'NULL' : 'UNDEFINED', seg0, waitingForOAuth });
     if (!ready || session === undefined || seg0 === undefined || waitingForOAuth) return;
 
@@ -133,7 +161,10 @@ export default function RootLayout() {
   }, [ready, session, profile, seg0, waitingForOAuth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Hold splash until storage, auth, OAuth exchange, and profile are all resolved.
-  if (!ready || session === undefined || waitingForOAuth || (session && profile === undefined)) {
+  // In AUTH_DISABLED mode, only wait for storage init (ready flag).
+  if (AUTH_DISABLED) {
+    if (!ready) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
+  } else if (!ready || session === undefined || waitingForOAuth || (session && profile === undefined)) {
     return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
   }
 
