@@ -97,8 +97,9 @@ export default function RootLayout() {
 
   // Manually exchange OAuth tokens from the URL — handles /callback and any other
   // landing route. callback.tsx is passive; _layout owns the exchange.
+  // Always runs regardless of AUTH_DISABLED so the token is consumed and the
+  // URL is cleaned up — the route guard then redirects to home.
   useEffect(() => {
-    if (AUTH_DISABLED) return;
     if (!waitingForOAuth || Platform.OS !== 'web' || typeof window === 'undefined') return;
 
     const hash = window.location.hash;
@@ -138,7 +139,15 @@ export default function RootLayout() {
 
   // Route guard — waits for OAuth exchange, storage init, auth, and profile fetch.
   useEffect(() => {
-    if (AUTH_DISABLED) return;
+    if (AUTH_DISABLED) {
+      // Even with auth disabled, redirect away from auth-only routes so the
+      // user isn't stranded on /callback or /(auth) if they land there.
+      if (ready && seg0 !== undefined) {
+        const onSpecialRoute = seg0 === '(auth)' || seg0 === 'callback' || seg0 === 'onboarding';
+        if (onSpecialRoute) router.replace('/');
+      }
+      return;
+    }
 
     // Detect session changes so we can ignore stale profile=null values.
     const sessionChanged = prevSessionRef.current !== session;
@@ -171,11 +180,11 @@ export default function RootLayout() {
     if (resolvedProfile && (inAuth || inOnboarding || inCallback)) router.replace('/');
   }, [ready, session, profile, seg0, waitingForOAuth]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Hold splash until storage, auth, OAuth exchange, and profile are all resolved.
-  // In AUTH_DISABLED mode, only wait for storage init (ready flag).
-  if (AUTH_DISABLED) {
-    if (!ready) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
-  } else if (!ready || session === undefined || waitingForOAuth || (session && profile === undefined)) {
+  // Hold splash until storage init and OAuth exchange complete.
+  // In AUTH_DISABLED mode we skip session/profile checks but still wait for
+  // the OAuth exchange so the callback token is consumed before rendering.
+  if (!ready || waitingForOAuth) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
+  if (!AUTH_DISABLED && (session === undefined || (session && profile === undefined))) {
     return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
   }
 
