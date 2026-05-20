@@ -47,6 +47,10 @@ export default function RootLayout() {
   const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
   const [waitingForOAuth, setWaitingForOAuth] = useState(detectOAuthCallback);
   const mounted = useRef(false);
+  // Tracks the previous session ref so the guard can detect when session just
+  // changed. Prevents acting on a stale profile=null that belongs to the
+  // previous signed-out state before the profile effect resets it to undefined.
+  const prevSessionRef = useRef<Session | null | undefined>(undefined);
 
   useEffect(() => {
     if (AUTH_DISABLED) {
@@ -135,7 +139,11 @@ export default function RootLayout() {
   // Route guard — waits for OAuth exchange, storage init, auth, and profile fetch.
   useEffect(() => {
     if (AUTH_DISABLED) return;
-    console.log('[guard]', { ready, session: session ? 'SET' : session === null ? 'NULL' : 'UNDEFINED', profile: profile ? 'SET' : profile === null ? 'NULL' : 'UNDEFINED', seg0, waitingForOAuth });
+
+    // Detect session changes so we can ignore stale profile=null values.
+    const sessionChanged = prevSessionRef.current !== session;
+    prevSessionRef.current = session;
+
     if (!ready || session === undefined || seg0 === undefined || waitingForOAuth) return;
 
     const inAuth = seg0 === '(auth)';
@@ -143,7 +151,6 @@ export default function RootLayout() {
     const inCallback = seg0 === 'callback';
 
     if (!session) {
-      console.log('[guard] no session → redirecting to auth');
       if (!inAuth) router.replace('/(auth)');
       return;
     }
@@ -151,13 +158,17 @@ export default function RootLayout() {
     // Profile fetch still in-flight — wait.
     if (profile === undefined) return;
 
+    // If session just became active, profile=null is stale (it was set when the
+    // session was null). The profile effect will reset it to undefined shortly.
+    // Returning here prevents a premature redirect to /onboarding.
+    if (sessionChanged && profile === null) return;
+
     // Fall back to local cache: covers the moment right after onboarding saves
     // (saveProfile writes to cache immediately, but layout state is still null).
     const resolvedProfile = profile ?? getProfileCached();
-    console.log('[guard] resolvedProfile:', resolvedProfile ? 'SET' : 'NULL', '| inOnboarding:', inOnboarding, '| inAuth:', inAuth, '| inCallback:', inCallback);
 
-    if (!resolvedProfile && !inOnboarding) { console.log('[guard] no profile → /onboarding'); router.replace('/onboarding'); return; }
-    if (resolvedProfile && (inAuth || inOnboarding || inCallback)) { console.log('[guard] has profile + special route → /'); router.replace('/'); }
+    if (!resolvedProfile && !inOnboarding) { router.replace('/onboarding'); return; }
+    if (resolvedProfile && (inAuth || inOnboarding || inCallback)) router.replace('/');
   }, [ready, session, profile, seg0, waitingForOAuth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Hold splash until storage, auth, OAuth exchange, and profile are all resolved.
