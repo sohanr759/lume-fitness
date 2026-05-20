@@ -107,6 +107,7 @@ export default function RootLayout() {
 
   // Route guard — waits for OAuth exchange, storage init, auth, and profile fetch.
   useEffect(() => {
+    console.log('[guard]', { ready, session: session ? 'SET' : session === null ? 'NULL' : 'UNDEFINED', profile: profile ? 'SET' : profile === null ? 'NULL' : 'UNDEFINED', seg0, waitingForOAuth });
     if (!ready || session === undefined || seg0 === undefined || waitingForOAuth) return;
 
     const inAuth = seg0 === '(auth)';
@@ -114,6 +115,7 @@ export default function RootLayout() {
     const inCallback = seg0 === 'callback';
 
     if (!session) {
+      console.log('[guard] no session → redirecting to auth');
       if (!inAuth) router.replace('/(auth)');
       return;
     }
@@ -124,10 +126,10 @@ export default function RootLayout() {
     // Fall back to local cache: covers the moment right after onboarding saves
     // (saveProfile writes to cache immediately, but layout state is still null).
     const resolvedProfile = profile ?? getProfileCached();
+    console.log('[guard] resolvedProfile:', resolvedProfile ? 'SET' : 'NULL', '| inOnboarding:', inOnboarding, '| inAuth:', inAuth, '| inCallback:', inCallback);
 
-    if (!resolvedProfile && !inOnboarding) { router.replace('/onboarding'); return; }
-    // Route to home from auth, onboarding, or /callback (post-OAuth landing).
-    if (resolvedProfile && (inAuth || inOnboarding || inCallback)) router.replace('/');
+    if (!resolvedProfile && !inOnboarding) { console.log('[guard] no profile → /onboarding'); router.replace('/onboarding'); return; }
+    if (resolvedProfile && (inAuth || inOnboarding || inCallback)) { console.log('[guard] has profile + special route → /'); router.replace('/'); }
   }, [ready, session, profile, seg0, waitingForOAuth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Hold splash until storage, auth, OAuth exchange, and profile are all resolved.
