@@ -117,7 +117,7 @@ export default function RootLayout() {
       if (accessToken && refreshToken) {
         supabase.auth
           .setSession({ access_token: accessToken, refresh_token: refreshToken })
-          .then(({ error }) => { if (error) done(); })
+          .then(() => done())  // always clear waitingForOAuth — onAuthStateChange may not fire in AUTH_DISABLED mode
           .catch(done);
       } else {
         done();
@@ -127,7 +127,7 @@ export default function RootLayout() {
       window.history.replaceState({}, '', window.location.pathname);
       supabase.auth
         .exchangeCodeForSession(fullUrl)
-        .then(({ error }) => { if (error) done(); })
+        .then(() => done())  // same — always clear
         .catch(done);
     } else {
       done();
