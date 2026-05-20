@@ -29,8 +29,10 @@ export function getProfileCached(): Profile | null {
 // Fetch from Supabase (source of truth), write to local cache, return result.
 // Returns null if the user has no profile row yet.
 export async function fetchProfile(): Promise<Profile | null> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  // getSession reads from localStorage — no network call, cannot trigger SIGNED_OUT.
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return null;
+  const user = session.user;
 
   const { data, error } = await supabase
     .from('profiles')
@@ -47,7 +49,8 @@ export async function fetchProfile(): Promise<Profile | null> {
 
 // Save profile to Supabase and local cache.
 export async function saveProfile(p: Omit<Profile, 'goal_kcal' | 'created_at'>): Promise<Profile> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user;
   const goal_kcal = computeGoalKcal(p);
   const full: Profile = { ...p, goal_kcal, created_at: Date.now() };
 
@@ -62,7 +65,8 @@ export async function saveProfile(p: Omit<Profile, 'goal_kcal' | 'created_at'>):
 
 // Update an existing profile — recalculates goal_kcal, preserves original created_at.
 export async function updateProfile(p: Omit<Profile, 'goal_kcal' | 'created_at'>): Promise<Profile> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user;
   const existing = getProfileCached();
   const goal_kcal = computeGoalKcal(p);
   const full: Profile = { ...p, goal_kcal, created_at: existing?.created_at ?? Date.now() };

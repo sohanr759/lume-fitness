@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, TextInput, StyleSheet, Pressable, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, TextInput, StyleSheet, Pressable, ScrollView, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
@@ -44,18 +44,28 @@ export default function Onboarding() {
     else finish();
   };
 
+  const [finishing, setFinishing] = useState(false);
+
   const finish = async () => {
-    const { height_cm, weight_kg } = toMetric();
-    await saveProfile({
-      name: name.trim() || 'Friend',
-      sex,
-      age: Number(age) || 25,
-      height_cm,
-      weight_kg,
-      goal,
-      activity,
-    });
-    router.replace('/');
+    if (finishing) return;
+    setFinishing(true);
+    try {
+      const { height_cm, weight_kg } = toMetric();
+      await saveProfile({
+        name: name.trim() || 'Friend',
+        sex,
+        age: Number(age) || 25,
+        height_cm,
+        weight_kg,
+        goal,
+        activity,
+      });
+      router.replace('/');
+    } catch (e: any) {
+      Alert.alert('Something went wrong', e?.message ?? 'Could not save your profile. Please try again.');
+    } finally {
+      setFinishing(false);
+    }
   };
 
   const bodyReady = unitSystem === 'metric'
@@ -192,7 +202,10 @@ export default function Onboarding() {
         </ScrollView>
 
         <View style={{ paddingVertical: space.lg }}>
-          <Button label={step === 'goal' ? 'Get Started' : 'Continue'} onPress={canAdvance ? next : undefined} />
+          <Button
+            label={step === 'goal' ? (finishing ? 'Saving…' : 'Get Started') : 'Continue'}
+            onPress={canAdvance && !finishing ? next : undefined}
+          />
         </View>
       </KeyboardAvoidingView>
     </Screen>
