@@ -101,7 +101,10 @@ export default function RootLayout() {
   }, [ready, session, profile, seg0, waitingForOAuth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Splash ───────────────────────────────────────────────────────────────────
-  if (!ready || waitingForOAuth || session === undefined || (session && profile === undefined)) {
+  // waitingForOAuth is intentionally NOT here — it only blocks the route guard,
+  // not the Stack. Keeping the Stack always mounted means router.replace() works
+  // the moment the exchange settles (navigator is already ready).
+  if (!ready || session === undefined || (session && profile === undefined)) {
     return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
   }
 

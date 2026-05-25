@@ -51,11 +51,15 @@ if (isOAuthCallback) {
     const at = p.get('access_token');
     const rt = p.get('refresh_token');
     if (at && rt) {
-      supabase.auth.setSession({ access_token: at, refresh_token: rt }).catch(() => {});
+      supabase.auth.setSession({ access_token: at, refresh_token: rt })
+        .then(({ error }) => { if (error) console.error('[supabase] setSession failed:', error.message); })
+        .catch((e) => console.error('[supabase] setSession threw:', e));
     }
   } else {
     // PKCE flow: exchange the code for a session.
     const fullUrl = `${window.location.origin}${window.location.pathname}${_s}`;
-    supabase.auth.exchangeCodeForSession(fullUrl).catch(() => {});
+    supabase.auth.exchangeCodeForSession(fullUrl)
+      .then(({ error }) => { if (error) console.error('[supabase] exchangeCode failed:', error.message); })
+      .catch((e) => console.error('[supabase] exchangeCode threw:', e));
   }
 }
