@@ -51,6 +51,10 @@ export default function RootLayout() {
   // changed. Prevents acting on a stale profile=null that belongs to the
   // previous signed-out state before the profile effect resets it to undefined.
   const prevSessionRef = useRef<Session | null | undefined>(undefined);
+  // Carries an OAuth error message from the exchange effect → route guard so
+  // the guard can redirect to /(auth)?oauth_error=... in one step, avoiding a
+  // double-redirect race between fail() and the guard.
+  const oauthErrorRef = useRef<string | null>(null);
 
   useEffect(() => {
     mounted.current = true;
@@ -107,6 +111,15 @@ export default function RootLayout() {
 
     const done = () => { if (mounted.current) setWaitingForOAuth(false); };
 
+    // On failure: store the error message in a ref so the route guard can
+    // include it when it redirects to /(auth). This avoids a double-redirect
+    // race between calling router.replace here and the guard firing immediately.
+    const fail = (err?: unknown) => {
+      const msg = (err instanceof Error ? err.message : null) ?? 'Sign-in failed. Please try again.';
+      if (mounted.current) oauthErrorRef.current = msg;
+      done();
+    };
+
     if (hash.includes('access_token=')) {
       const params = new URLSearchParams(hash.replace(/^#/, ''));
       const accessToken = params.get('access_token');
@@ -117,23 +130,23 @@ export default function RootLayout() {
       if (accessToken && refreshToken) {
         supabase.auth
           .setSession({ access_token: accessToken, refresh_token: refreshToken })
-          .then(() => done())  // always clear waitingForOAuth — onAuthStateChange may not fire in AUTH_DISABLED mode
-          .catch(done);
+          .then(({ error: e }) => { e ? fail(e) : done(); })
+          .catch(fail);
       } else {
-        done();
+        fail(new Error('Incomplete OAuth token in URL.'));
       }
     } else if (new URLSearchParams(search).has('code')) {
       const fullUrl = window.location.href;
       window.history.replaceState({}, '', window.location.pathname);
       supabase.auth
         .exchangeCodeForSession(fullUrl)
-        .then(() => done())  // same — always clear
-        .catch(done);
+        .then(({ error: e }) => { e ? fail(e) : done(); })
+        .catch(fail);
     } else {
       done();
     }
 
-    const t = setTimeout(done, 10000);
+    const t = setTimeout(() => fail(new Error('Sign-in timed out. Please try again.')), 10000);
     return () => clearTimeout(t);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -160,7 +173,16 @@ export default function RootLayout() {
     const inCallback = seg0 === 'callback';
 
     if (!session) {
-      if (!inAuth) router.replace('/(auth)');
+      if (!inAuth) {
+        // If an OAuth exchange just failed, carry the error into the auth route
+        // so the user sees what went wrong instead of a silent redirect.
+        const errMsg = oauthErrorRef.current;
+        oauthErrorRef.current = null;
+        const dest = errMsg
+          ? (`/(auth)?oauth_error=${encodeURIComponent(errMsg)}` as any)
+          : '/(auth)';
+        router.replace(dest);
+      }
       return;
     }
 

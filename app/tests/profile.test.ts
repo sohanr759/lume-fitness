@@ -1,5 +1,8 @@
 // Tests: lib/profile.ts
-// Covers saveProfile, getProfile, updateProfile, computeGoalKcal, clearProfile
+// Covers saveProfile, getProfile, updateProfile, clearProfile, computeGoalKcal
+//
+// Supabase is mocked so these tests exercise local-cache logic only.
+// getSession returns null → saveProfile/updateProfile skip the remote upsert.
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
@@ -8,7 +11,7 @@ jest.mock('react-native', () => ({
   Platform: { OS: 'ios' },
 }));
 
-// Use an in-memory storage mock so tests are isolated
+// In-memory storage mock so tests are isolated
 const mem: Record<string, string> = {};
 jest.mock('@/lib/cache', () => ({
   storage: {
@@ -21,7 +24,29 @@ jest.mock('@/lib/cache', () => ({
   getRecentFoods: jest.fn(() => []),
 }));
 
-import { saveProfile, getProfile, updateProfile, clearProfile, computeGoalKcal } from '@/lib/profile';
+// Supabase mock — no session so remote calls are skipped
+jest.mock('@/lib/supabase', () => ({
+  supabase: {
+    auth: {
+      getSession: jest.fn().mockResolvedValue({ data: { session: null } }),
+    },
+    from: jest.fn().mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      single: jest.fn().mockResolvedValue({ data: null, error: null }),
+      upsert: jest.fn().mockResolvedValue({ error: null }),
+    }),
+  },
+}));
+
+import {
+  saveProfile,
+  getProfile,
+  getProfileCached,
+  updateProfile,
+  clearProfile,
+  computeGoalKcal,
+} from '@/lib/profile';
 
 const base = {
   name: 'Sohan',
@@ -66,10 +91,11 @@ describe('computeGoalKcal', () => {
 describe('saveProfile / getProfile', () => {
   it('returns null when no profile saved', () => {
     expect(getProfile()).toBeNull();
+    expect(getProfileCached()).toBeNull();
   });
 
-  it('saves and retrieves a profile', () => {
-    const saved = saveProfile(base);
+  it('saves and retrieves a profile', async () => {
+    const saved = await saveProfile(base);
     expect(saved.name).toBe('Sohan');
     expect(saved.goal_kcal).toBeGreaterThan(0);
     expect(saved.created_at).toBeLessThanOrEqual(Date.now());
@@ -79,30 +105,30 @@ describe('saveProfile / getProfile', () => {
     expect(got!.name).toBe('Sohan');
   });
 
-  it('goal_kcal matches computeGoalKcal', () => {
-    const saved = saveProfile(base);
+  it('goal_kcal matches computeGoalKcal', async () => {
+    const saved = await saveProfile(base);
     expect(saved.goal_kcal).toBe(computeGoalKcal(base));
   });
 });
 
 describe('updateProfile', () => {
-  it('preserves original created_at', () => {
-    const original = saveProfile(base);
-    const updated = updateProfile({ ...base, name: 'Updated' });
+  it('preserves original created_at', async () => {
+    const original = await saveProfile(base);
+    const updated = await updateProfile({ ...base, name: 'Updated' });
     expect(updated.created_at).toBe(original.created_at);
     expect(updated.name).toBe('Updated');
   });
 
-  it('recalculates goal_kcal on update', () => {
-    saveProfile(base);
-    const updated = updateProfile({ ...base, goal: 'lose' });
+  it('recalculates goal_kcal on update', async () => {
+    await saveProfile(base);
+    const updated = await updateProfile({ ...base, goal: 'lose' });
     expect(updated.goal_kcal).toBe(computeGoalKcal({ ...base, goal: 'lose' }));
   });
 });
 
 describe('clearProfile', () => {
-  it('removes profile from storage', () => {
-    saveProfile(base);
+  it('removes profile from storage', async () => {
+    await saveProfile(base);
     clearProfile();
     expect(getProfile()).toBeNull();
   });

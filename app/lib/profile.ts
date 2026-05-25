@@ -26,6 +26,9 @@ export function getProfileCached(): Profile | null {
   return raw ? (JSON.parse(raw) as Profile) : null;
 }
 
+// Alias used by local-only callers (e.g. unit tests that mock Supabase).
+export const getProfile = getProfileCached;
+
 // Fetch from Supabase (source of truth), write to local cache, return result.
 // Returns null if the user has no profile row yet.
 export async function fetchProfile(): Promise<Profile | null> {
