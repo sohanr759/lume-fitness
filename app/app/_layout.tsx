@@ -5,208 +5,103 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Session } from '@supabase/supabase-js';
 import { colors } from '@/lib/theme';
-import { fetchProfile, getProfileCached, saveProfile, type Profile } from '@/lib/profile';
+import { fetchProfile, getProfileCached, type Profile } from '@/lib/profile';
 import { initStorage } from '@/lib/cache';
 import { supabase } from '@/lib/supabase';
 
-// When EXPO_PUBLIC_AUTH_DISABLED=true the entire auth/onboarding gate is
-// bypassed. The app renders immediately with a guest profile so every other
-// feature (food log, workout, history) can be tested without a Supabase
-// account. Flip the flag back to re-enable auth with zero code changes.
-const AUTH_DISABLED = process.env.EXPO_PUBLIC_AUTH_DISABLED === 'true';
-
-const GUEST_PROFILE: Omit<Profile, 'goal_kcal' | 'created_at'> = {
-  name: 'Guest',
-  sex: 'male',
-  age: 25,
-  height_cm: 175,
-  weight_kg: 70,
-  goal: 'maintain',
-  activity: 'moderate',
-};
-
-// Capture URL at module-load time — before Expo Router processes/clears it.
-const _initHash = typeof window !== 'undefined' ? window.location.hash : '';
-const _initSearch = typeof window !== 'undefined' ? window.location.search : '';
-
-function detectOAuthCallback(): boolean {
-  if (Platform.OS !== 'web') return false;
-  return (
-    _initHash.includes('access_token=') ||
-    new URLSearchParams(_initSearch).has('code')
-  );
-}
+// Capture any OAuth error surfaced by the provider in the redirect URL.
+// Read at module-load time before Expo Router processes the URL.
+const _oauthError =
+  typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('error_description') ??
+      new URLSearchParams(window.location.search).get('error') ??
+      null
+    : null;
 
 export default function RootLayout() {
   const router = useRouter();
   const segments = useSegments();
   const seg0 = segments[0] as string | undefined;
-  const [ready, setReady] = useState(false);
-  const [session, setSession] = useState<Session | null | undefined>(undefined);
-  // undefined = fetch in-flight, null = no profile, Profile = loaded
-  const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
-  const [waitingForOAuth, setWaitingForOAuth] = useState(detectOAuthCallback);
-  const mounted = useRef(false);
-  // Tracks the previous session ref so the guard can detect when session just
-  // changed. Prevents acting on a stale profile=null that belongs to the
-  // previous signed-out state before the profile effect resets it to undefined.
-  const prevSessionRef = useRef<Session | null | undefined>(undefined);
-  // Carries an OAuth error message from the exchange effect → route guard so
-  // the guard can redirect to /(auth)?oauth_error=... in one step, avoiding a
-  // double-redirect race between fail() and the guard.
-  const oauthErrorRef = useRef<string | null>(null);
 
+  const [ready, setReady] = useState(false);
+  // undefined → Supabase hasn't resolved yet | null → signed out | Session → signed in
+  const [session, setSession] = useState<Session | null | undefined>(undefined);
+  // undefined → fetch in-flight | null → no profile row | Profile → loaded
+  const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
+
+  const mounted = useRef(false);
+  // Detects when session transitions null→active so the guard can ignore
+  // the stale profile=null that was set during the signed-out state.
+  const prevSessionRef = useRef<Session | null | undefined>(undefined);
+
+  // ── Storage init ────────────────────────────────────────────────────────────
   useEffect(() => {
     mounted.current = true;
-    if (AUTH_DISABLED) {
-      // Seed a guest profile if the cache is empty so all screens render correctly.
-      initStorage().then(async () => {
-        if (!getProfileCached()) await saveProfile(GUEST_PROFILE);
-        if (mounted.current) setReady(true);
-      });
-      return () => { mounted.current = false; };
-    }
     initStorage().then(() => { if (mounted.current) setReady(true); });
+    return () => { mounted.current = false; };
   }, []);
 
-  // Auth state listener — also clears the OAuth wait when session arrives.
+  // ── Auth state ──────────────────────────────────────────────────────────────
+  // Supabase fires INITIAL_SESSION once it resolves the session (including any
+  // OAuth token exchange it started at client-init time). After that it fires
+  // SIGNED_IN / SIGNED_OUT / TOKEN_REFRESHED as state changes.
   useEffect(() => {
-    if (AUTH_DISABLED) return;
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       if (!mounted.current) return;
       setSession(s);
-      if (s) setWaitingForOAuth(false);
     });
-    return () => {
-      mounted.current = false;
-      subscription.unsubscribe();
-    };
+    return () => subscription.unsubscribe();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch profile from Supabase whenever session changes.
-  // session === undefined means auth hasn't resolved yet — skip.
-  // session === null means signed out — clear profile immediately.
+  // ── Profile fetch ───────────────────────────────────────────────────────────
   useEffect(() => {
-    if (AUTH_DISABLED) return;
-    if (session === undefined) return;
-    if (!session) {
-      setProfile(null);
-      return;
-    }
-    setProfile(undefined); // mark as in-flight
-    fetchProfile().then((p) => {
-      if (mounted.current) setProfile(p);
-    });
+    if (session === undefined) return;         // not resolved yet — wait
+    if (!session) { setProfile(null); return; } // signed out — clear immediately
+    setProfile(undefined);                      // mark in-flight
+    fetchProfile().then((p) => { if (mounted.current) setProfile(p); });
   }, [session]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Manually exchange OAuth tokens from the URL — handles /callback and any other
-  // landing route. callback.tsx is passive; _layout owns the exchange.
-  // Always runs regardless of AUTH_DISABLED so the token is consumed and the
-  // URL is cleaned up — the route guard then redirects to home.
+  // ── Route guard ─────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!waitingForOAuth || Platform.OS !== 'web' || typeof window === 'undefined') return;
-
-    const hash = _initHash;
-    const search = _initSearch;
-
-    const done = () => { if (mounted.current) setWaitingForOAuth(false); };
-
-    // On failure: store the error message in a ref so the route guard can
-    // include it when it redirects to /(auth). This avoids a double-redirect
-    // race between calling router.replace here and the guard firing immediately.
-    const fail = (err?: unknown) => {
-      const msg = (err instanceof Error ? err.message : null) ?? 'Sign-in failed. Please try again.';
-      if (mounted.current) oauthErrorRef.current = msg;
-      done();
-    };
-
-    if (hash.includes('access_token=')) {
-      const params = new URLSearchParams(hash.replace(/^#/, ''));
-      const accessToken = params.get('access_token');
-      const refreshToken = params.get('refresh_token');
-
-      window.history.replaceState({}, '', window.location.pathname);
-
-      if (accessToken && refreshToken) {
-        supabase.auth
-          .setSession({ access_token: accessToken, refresh_token: refreshToken })
-          .then(({ error: e }) => { e ? fail(e) : done(); })
-          .catch(fail);
-      } else {
-        fail(new Error('Incomplete OAuth token in URL.'));
-      }
-    } else if (new URLSearchParams(search).has('code')) {
-      const fullUrl = `${window.location.origin}${window.location.pathname}${_initSearch}`;
-      window.history.replaceState({}, '', window.location.pathname);
-      supabase.auth
-        .exchangeCodeForSession(fullUrl)
-        .then(({ error: e }) => { e ? fail(e) : done(); })
-        .catch(fail);
-    } else {
-      done();
-    }
-
-    const t = setTimeout(() => fail(new Error('Sign-in timed out. Please try again.')), 10000);
-    return () => clearTimeout(t);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Route guard — waits for OAuth exchange, storage init, auth, and profile fetch.
-  useEffect(() => {
-    if (AUTH_DISABLED) {
-      // Even with auth disabled, redirect away from auth-only routes so the
-      // user isn't stranded on /callback or /(auth) if they land there.
-      if (ready && seg0 !== undefined) {
-        const onSpecialRoute = seg0 === '(auth)' || seg0 === 'callback' || seg0 === 'onboarding';
-        if (onSpecialRoute) router.replace('/');
-      }
-      return;
-    }
-
-    // Detect session changes so we can ignore stale profile=null values.
     const sessionChanged = prevSessionRef.current !== session;
     prevSessionRef.current = session;
 
-    if (!ready || session === undefined || seg0 === undefined || waitingForOAuth) return;
+    if (!ready || session === undefined || seg0 === undefined) return;
 
-    const inAuth = seg0 === '(auth)';
+    const inAuth       = seg0 === '(auth)';
     const inOnboarding = seg0 === 'onboarding';
-    const inCallback = seg0 === 'callback';
+    const inCallback   = seg0 === 'callback';
 
+    // ── No session ────────────────────────────────────────────────────────────
     if (!session) {
-      if (!inAuth) {
-        // If an OAuth exchange just failed, carry the error into the auth route
-        // so the user sees what went wrong instead of a silent redirect.
-        const errMsg = oauthErrorRef.current;
-        oauthErrorRef.current = null;
-        const dest = errMsg
-          ? (`/(auth)?oauth_error=${encodeURIComponent(errMsg)}` as any)
-          : '/(auth)';
-        router.replace(dest);
-      }
+      if (inAuth) return; // already there
+      const dest = _oauthError
+        ? (`/(auth)?oauth_error=${encodeURIComponent(_oauthError)}` as any)
+        : '/(auth)';
+      router.replace(dest);
       return;
     }
 
-    // Profile fetch still in-flight — wait.
-    if (profile === undefined) return;
+    // ── Session active ────────────────────────────────────────────────────────
+    if (profile === undefined) return; // profile fetch in-flight — wait
 
-    // If session just became active, profile=null is stale (it was set when the
-    // session was null). The profile effect will reset it to undefined shortly.
-    // Returning here prevents a premature redirect to /onboarding.
+    // session just went null → active: profile=null is stale from signed-out state.
+    // The profile effect already kicked off fetchProfile(); wait for it.
     if (sessionChanged && profile === null) return;
 
-    // Fall back to local cache: covers the moment right after onboarding saves
-    // (saveProfile writes to cache immediately, but layout state is still null).
+    // After onboarding: saveProfile() writes to cache synchronously then
+    // router.replace('/') fires. Profile state is still null (wasn't re-fetched),
+    // but the cache already has the new profile — use it as the source of truth.
     const resolvedProfile = profile ?? getProfileCached();
 
     if (!resolvedProfile && !inOnboarding) { router.replace('/onboarding'); return; }
     if (resolvedProfile && (inAuth || inOnboarding || inCallback)) router.replace('/');
-  }, [ready, session, profile, seg0, waitingForOAuth]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ready, session, profile, seg0]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Hold splash until storage init and OAuth exchange complete.
-  // In AUTH_DISABLED mode we skip session/profile checks but still wait for
-  // the OAuth exchange so the callback token is consumed before rendering.
-  if (!ready || waitingForOAuth) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
-  if (!AUTH_DISABLED && (session === undefined || (session && profile === undefined))) {
+  // ── Splash ───────────────────────────────────────────────────────────────────
+  // Hold until storage is ready, Supabase has resolved the session (including
+  // any async OAuth exchange), and the profile fetch has settled.
+  if (!ready || session === undefined || (session && profile === undefined)) {
     return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
   }
 

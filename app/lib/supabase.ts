@@ -15,6 +15,6 @@ export const supabase = createClient(url, anon, {
     storage: Platform.OS === 'web' ? undefined : AsyncStorage,
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: false, // handled manually in _layout.tsx to avoid hash-clearing race
+    detectSessionInUrl: true,  // client init runs before React/Expo Router — URL is intact
   },
 });
