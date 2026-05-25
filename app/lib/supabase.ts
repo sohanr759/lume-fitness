@@ -1,8 +1,7 @@
 // Supabase client — auth and Edge Function calls.
 //
 // OAuth exchange is handled here at module-load time (before React/Expo Router
-// run) so the URL hash/search is guaranteed to be intact. detectSessionInUrl is
-// intentionally false — we do it ourselves below, once, at the right moment.
+// run) so the URL hash/search is guaranteed to be intact.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
@@ -26,13 +25,12 @@ export const supabase = createClient(url, anon, {
 });
 
 // True when this page load is an OAuth redirect (implicit or PKCE).
-// Exported so _layout.tsx can hold its splash until the exchange settles.
 export const isOAuthCallback =
   Platform.OS === 'web' &&
   typeof window !== 'undefined' &&
   (_h.includes('access_token=') || new URLSearchParams(_s).has('code'));
 
-// Any error the OAuth provider put in the redirect URL (e.g. user denied access).
+// Any error the OAuth *provider* put in the redirect URL (e.g. user denied).
 export const oauthProviderError =
   typeof window !== 'undefined'
     ? new URLSearchParams(_s).get('error_description') ??
@@ -40,26 +38,28 @@ export const oauthProviderError =
       null
     : null;
 
-// Kick off the exchange immediately — runs once, synchronously triggered, before
-// React mounts. Cleans the URL right away so tokens never sit in the address bar.
-if (isOAuthCallback) {
+// Promise that settles once the token exchange completes.
+// Resolves to an error string on failure, null on success.
+// _layout.tsx awaits this to surface exchange errors on the auth screen.
+export const oauthExchangePromise: Promise<string | null> = (() => {
+  if (!isOAuthCallback) return Promise.resolve(null);
+
   window.history.replaceState({}, '', window.location.pathname);
 
   if (_h.includes('access_token=')) {
-    // Implicit flow: server returned tokens directly in the hash.
     const p  = new URLSearchParams(_h.replace(/^#/, ''));
     const at = p.get('access_token');
     const rt = p.get('refresh_token');
-    if (at && rt) {
-      supabase.auth.setSession({ access_token: at, refresh_token: rt })
-        .then(({ error }) => { if (error) console.error('[supabase] setSession failed:', error.message); })
-        .catch((e) => console.error('[supabase] setSession threw:', e));
-    }
-  } else {
-    // PKCE flow: exchange the code for a session.
-    const fullUrl = `${window.location.origin}${window.location.pathname}${_s}`;
-    supabase.auth.exchangeCodeForSession(fullUrl)
-      .then(({ error }) => { if (error) console.error('[supabase] exchangeCode failed:', error.message); })
-      .catch((e) => console.error('[supabase] exchangeCode threw:', e));
+    if (!at || !rt) return Promise.resolve('Incomplete token in redirect URL.');
+    return supabase.auth
+      .setSession({ access_token: at, refresh_token: rt })
+      .then(({ error }) => error?.message ?? null)
+      .catch((e: unknown) => (e instanceof Error ? e.message : 'OAuth exchange failed.'));
   }
-}
+
+  const fullUrl = `${window.location.origin}${window.location.pathname}${_s}`;
+  return supabase.auth
+    .exchangeCodeForSession(fullUrl)
+    .then(({ error }) => error?.message ?? null)
+    .catch((e: unknown) => (e instanceof Error ? e.message : 'OAuth exchange failed.'));
+})();

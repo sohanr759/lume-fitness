@@ -7,7 +7,7 @@ import type { Session } from '@supabase/supabase-js';
 import { colors } from '@/lib/theme';
 import { fetchProfile, getProfileCached, type Profile } from '@/lib/profile';
 import { initStorage } from '@/lib/cache';
-import { supabase, isOAuthCallback, oauthProviderError } from '@/lib/supabase';
+import { supabase, isOAuthCallback, oauthProviderError, oauthExchangePromise } from '@/lib/supabase';
 
 export default function RootLayout() {
   const router   = useRouter();
@@ -26,6 +26,8 @@ export default function RootLayout() {
   // Detects session null→active transitions so the guard ignores the stale
   // profile=null that was set during the signed-out state.
   const prevSessionRef = useRef<Session | null | undefined>(undefined);
+  // Error returned by the OAuth exchange (null = success, string = failure message).
+  const exchangeErrorRef = useRef<string | null>(null);
 
   // ── Storage init ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -46,13 +48,32 @@ export default function RootLayout() {
     return () => subscription.unsubscribe();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── OAuth timeout ───────────────────────────────────────────────────────────
-  // If the exchange doesn't produce a session within 10 s, unblock so the user
-  // can see the auth screen and try again.
+  // ── OAuth exchange settlement ────────────────────────────────────────────────
+  // Awaits the promise kicked off in supabase.ts (module-load time). When it
+  // settles we unblock the route guard. A 10 s fallback covers the case where
+  // the promise somehow never settles (e.g. network hang before promise resolves).
   useEffect(() => {
     if (!isOAuthCallback) return;
-    const t = setTimeout(() => { if (mounted.current) setWaitingForOAuth(false); }, 10_000);
-    return () => clearTimeout(t);
+
+    let settled = false;
+    const fallback = setTimeout(() => {
+      if (!settled && mounted.current) {
+        console.error('[Lume] OAuth exchange timed out after 10 s — no session or error received.');
+        setWaitingForOAuth(false);
+      }
+    }, 10_000);
+
+    oauthExchangePromise.then((errMsg) => {
+      settled = true;
+      clearTimeout(fallback);
+      if (errMsg) {
+        console.error('[Lume] OAuth exchange failed:', errMsg);
+        exchangeErrorRef.current = errMsg;
+      }
+      if (mounted.current) setWaitingForOAuth(false);
+    });
+
+    return () => { clearTimeout(fallback); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Profile fetch ───────────────────────────────────────────────────────────
@@ -77,8 +98,9 @@ export default function RootLayout() {
     // ── No session ────────────────────────────────────────────────────────────
     if (!session) {
       if (inAuth) return;
-      const dest = oauthProviderError
-        ? (`/(auth)?oauth_error=${encodeURIComponent(oauthProviderError)}` as any)
+      const authErr = exchangeErrorRef.current ?? oauthProviderError;
+      const dest = authErr
+        ? (`/(auth)?oauth_error=${encodeURIComponent(authErr)}` as any)
         : '/(auth)';
       router.replace(dest);
       return;
