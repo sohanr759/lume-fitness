@@ -123,10 +123,12 @@ export default function RootLayout() {
   }, [ready, session, profile, seg0, waitingForOAuth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Splash ───────────────────────────────────────────────────────────────────
-  // waitingForOAuth is intentionally NOT here — it only blocks the route guard,
-  // not the Stack. Keeping the Stack always mounted means router.replace() works
-  // the moment the exchange settles (navigator is already ready).
-  if (!ready || session === undefined || (session && profile === undefined)) {
+  // Once session resolves (INITIAL_SESSION fires), keep the Stack permanently
+  // mounted — even during profile fetch. Unmounting/remounting the navigator
+  // while profile is in-flight means router.replace() may fire before the
+  // navigator is ready. The route guard already blocks on profile === undefined,
+  // so no redirect fires prematurely.
+  if (!ready || session === undefined) {
     return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
   }
 
