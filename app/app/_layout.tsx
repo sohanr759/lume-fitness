@@ -106,8 +106,8 @@ export default function RootLayout() {
   useEffect(() => {
     if (!waitingForOAuth || Platform.OS !== 'web' || typeof window === 'undefined') return;
 
-    const hash = window.location.hash;
-    const search = window.location.search;
+    const hash = _initHash;
+    const search = _initSearch;
 
     const done = () => { if (mounted.current) setWaitingForOAuth(false); };
 
@@ -136,7 +136,7 @@ export default function RootLayout() {
         fail(new Error('Incomplete OAuth token in URL.'));
       }
     } else if (new URLSearchParams(search).has('code')) {
-      const fullUrl = window.location.href;
+      const fullUrl = `${window.location.origin}${window.location.pathname}${_initSearch}`;
       window.history.replaceState({}, '', window.location.pathname);
       supabase.auth
         .exchangeCodeForSession(fullUrl)
