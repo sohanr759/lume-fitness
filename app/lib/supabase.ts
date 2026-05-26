@@ -18,6 +18,11 @@ export const supabase = createClient(url, anon, {
     // On web use localStorage (synchronous) so the PKCE code verifier survives
     // the OAuth redirect. AsyncStorage is async-only and silently breaks PKCE.
     storage: Platform.OS === 'web' ? undefined : AsyncStorage,
+    // Force PKCE so the callback carries ?code= (query string) instead of
+    // #access_token= (hash). Expo Router strips the hash during initialisation
+    // before our module-level code can read it, so implicit flow silently
+    // fails. PKCE query params are never touched by the router.
+    flowType:           'pkce',
     persistSession:     true,
     autoRefreshToken:   true,
     detectSessionInUrl: false, // we exchange the token below, at the right time
