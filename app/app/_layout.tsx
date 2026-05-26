@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useEffect, useRef, useState } from 'react';
 import { View, Platform } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -9,23 +9,31 @@ import { fetchProfile, getProfileCached, type Profile } from '@/lib/profile';
 import { initStorage } from '@/lib/cache';
 import { supabase, isOAuthCallback, oauthProviderError, oauthExchangePromise } from '@/lib/supabase';
 
+// ── App context ──────────────────────────────────────────────────────────────
+// Provides onProfileSaved so child screens (onboarding) can push the freshly
+// saved profile into the root state immediately, without waiting for a
+// re-fetch or relying on the local cache as a fallback.
+export type AppContextValue = { onProfileSaved: (p: Profile) => void };
+export const AppContext = createContext<AppContextValue>({ onProfileSaved: () => {} });
+
 export default function RootLayout() {
   const router   = useRouter();
   const segments = useSegments();
   const seg0     = segments[0] as string | undefined;
 
-  const [ready,          setReady]          = useState(false);
+  const [ready,           setReady]           = useState(false);
   // undefined = not yet resolved | null = signed out | Session = signed in
-  const [session,        setSession]        = useState<Session | null | undefined>(undefined);
+  const [session,         setSession]         = useState<Session | null | undefined>(undefined);
   // undefined = fetch in-flight | null = no profile row | Profile = loaded
-  const [profile,        setProfile]        = useState<Profile | null | undefined>(undefined);
+  const [profile,         setProfile]         = useState<Profile | null | undefined>(undefined);
   // true while the OAuth exchange kicked off in supabase.ts is still in flight
   const [waitingForOAuth, setWaitingForOAuth] = useState(isOAuthCallback);
 
-  const mounted        = useRef(false);
-  // Detects session null→active transitions so the guard ignores the stale
-  // profile=null that was set during the signed-out state.
-  const prevSessionRef = useRef<Session | null | undefined>(undefined);
+  const mounted       = useRef(false);
+  // Tracks the last user ID we fetched a profile for.
+  // Prevents a token-refresh (same user, new Session object) from
+  // triggering a redundant fetchProfile() + setProfile(undefined) cycle.
+  const currentUserId = useRef<string | null>(null);
   // Error returned by the OAuth exchange (null = success, string = failure message).
   const exchangeErrorRef = useRef<string | null>(null);
 
@@ -37,8 +45,9 @@ export default function RootLayout() {
   }, []);
 
   // ── Auth state ──────────────────────────────────────────────────────────────
-  // INITIAL_SESSION fires once Supabase finishes initialising (reads localStorage).
+  // INITIAL_SESSION fires once Supabase finishes initialising (reads storage).
   // SIGNED_IN fires when the exchange kicked off in supabase.ts completes.
+  // TOKEN_REFRESHED fires ~hourly and passes a new Session with the same user.
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       if (!mounted.current) return;
@@ -49,9 +58,6 @@ export default function RootLayout() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── OAuth exchange settlement ────────────────────────────────────────────────
-  // Awaits the promise kicked off in supabase.ts (module-load time). When it
-  // settles we unblock the route guard. A 10 s fallback covers the case where
-  // the promise somehow never settles (e.g. network hang before promise resolves).
   useEffect(() => {
     if (!isOAuthCallback) return;
 
@@ -77,18 +83,41 @@ export default function RootLayout() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Profile fetch ───────────────────────────────────────────────────────────
+  // Only fetches when the user actually changes (new sign-in or sign-out).
+  // Token refresh keeps the same user.id — we skip the fetch to avoid
+  // a brief profile=undefined window that could trigger a spurious redirect.
   useEffect(() => {
-    if (session === undefined) return;         // not resolved yet — wait
-    if (!session) { setProfile(null); return; } // signed out — clear immediately
-    setProfile(undefined);                      // mark in-flight
-    fetchProfile().then((p) => { if (mounted.current) setProfile(p); });
+    if (session === undefined) return;
+
+    if (!session) {
+      currentUserId.current = null;
+      setProfile(null);
+      return;
+    }
+
+    // Same user (e.g. TOKEN_REFRESHED) — keep the existing profile state.
+    if (session.user.id === currentUserId.current) return;
+
+    currentUserId.current = session.user.id;
+    setProfile(undefined); // mark in-flight
+    fetchProfile(session.user.id).then((p) => {
+      if (!mounted.current) return;
+      // If the network fetch returned null, try the local cache as fallback.
+      // This keeps users on the home screen when the device is offline.
+      setProfile(p ?? getProfileCached());
+    });
   }, [session]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── onProfileSaved ──────────────────────────────────────────────────────────
+  // Called by onboarding.tsx immediately after saveProfile() resolves.
+  // Updates the profile state before router.replace('/') fires so the route
+  // guard never sees profile=null after onboarding completes.
+  const onProfileSaved = useCallback((p: Profile) => {
+    setProfile(p);
+  }, []);
 
   // ── Route guard ─────────────────────────────────────────────────────────────
   useEffect(() => {
-    const sessionChanged = prevSessionRef.current !== session;
-    prevSessionRef.current = session;
-
     if (!ready || session === undefined || seg0 === undefined || waitingForOAuth) return;
 
     const inAuth       = seg0 === '(auth)';
@@ -106,42 +135,40 @@ export default function RootLayout() {
       return;
     }
 
-    // ── Session active ────────────────────────────────────────────────────────
-    if (profile === undefined) return; // fetch in-flight — wait
+    // ── Session active: wait for profile fetch ────────────────────────────────
+    if (profile === undefined) return;
 
-    // Session just went null→active: profile=null is stale from the signed-out
-    // state. The profile effect will reset it to undefined — wait for that.
-    if (sessionChanged && profile === null) return;
+    // ── No profile row ────────────────────────────────────────────────────────
+    if (!profile) {
+      if (inOnboarding) return;
+      router.replace('/onboarding');
+      return;
+    }
 
-    // After onboarding: saveProfile() writes cache synchronously before
-    // router.replace('/') fires. Profile state is still null (not re-fetched),
-    // so fall back to cache as the source of truth.
-    const resolvedProfile = profile ?? getProfileCached();
-
-    if (!resolvedProfile && !inOnboarding) { router.replace('/onboarding'); return; }
-    if (resolvedProfile && (inAuth || inOnboarding || inCallback)) router.replace('/');
+    // ── Profile exists: ensure user is on the main app ────────────────────────
+    if (inAuth || inOnboarding || inCallback) router.replace('/');
   }, [ready, session, profile, seg0, waitingForOAuth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Splash ───────────────────────────────────────────────────────────────────
-  // Once session resolves (INITIAL_SESSION fires), keep the Stack permanently
-  // mounted — even during profile fetch. Unmounting/remounting the navigator
-  // while profile is in-flight means router.replace() may fire before the
-  // navigator is ready. The route guard already blocks on profile === undefined,
-  // so no redirect fires prematurely.
+  // Show a blank screen until session resolves so the Stack is always mounted
+  // once we start navigating — unmounting the navigator during profile fetch
+  // can cause router.replace() to fire before the navigator is ready.
   if (!ready || session === undefined) {
     return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
   }
 
   return (
-    <SafeAreaProvider>
-      <StatusBar style="light" />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: colors.bg },
-          animation: Platform.OS === 'web' ? 'none' : 'fade',
-        }}
-      />
-    </SafeAreaProvider>
+    <AppContext.Provider value={{ onProfileSaved }}>
+      <SafeAreaProvider>
+        <StatusBar style="light" />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: colors.bg },
+            animation: Platform.OS === 'web' ? 'none' : 'fade',
+          }}
+        />
+      </SafeAreaProvider>
+    </AppContext.Provider>
   );
 }

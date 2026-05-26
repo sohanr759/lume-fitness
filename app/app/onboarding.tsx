@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import { View, TextInput, StyleSheet, Pressable, ScrollView, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { Screen } from '@/components/Screen';
@@ -6,12 +6,14 @@ import { Text } from '@/components/Text';
 import { Button } from '@/components/Button';
 import { colors, radius, space, type } from '@/lib/theme';
 import { saveProfile, Sex, Goal, Activity, computeGoalKcal } from '@/lib/profile';
+import { AppContext } from '@/app/_layout';
 
 const STEPS = ['name', 'body', 'goal'] as const;
 type Step = typeof STEPS[number];
 type UnitSystem = 'metric' | 'imperial';
 
 export default function Onboarding() {
+  const { onProfileSaved } = useContext(AppContext);
   const [step, setStep] = useState<Step>('name');
   const [name, setName] = useState('');
   const [sex, setSex] = useState<Sex>('male');
@@ -51,7 +53,7 @@ export default function Onboarding() {
     setFinishing(true);
     try {
       const { height_cm, weight_kg } = toMetric();
-      await saveProfile({
+      const saved = await saveProfile({
         name: name.trim() || 'Friend',
         sex,
         age: Number(age) || 25,
@@ -60,6 +62,9 @@ export default function Onboarding() {
         goal,
         activity,
       });
+      // Update the root layout's profile state BEFORE navigating so the route
+      // guard never sees profile=null when it evaluates the new route.
+      onProfileSaved(saved);
       router.replace('/');
     } catch (e: any) {
       Alert.alert('Something went wrong', e?.message ?? 'Could not save your profile. Please try again.');

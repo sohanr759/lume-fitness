@@ -31,16 +31,13 @@ export const getProfile = getProfileCached;
 
 // Fetch from Supabase (source of truth), write to local cache, return result.
 // Returns null if the user has no profile row yet.
-export async function fetchProfile(): Promise<Profile | null> {
-  // getSession reads from localStorage — no network call, cannot trigger SIGNED_OUT.
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) return null;
-  const user = session.user;
-
+// Accepts userId directly — avoids an internal getSession() call that can
+// return null in the brief window after INITIAL_SESSION fires on native.
+export async function fetchProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from('profiles')
     .select('name, sex, age, height_cm, weight_kg, goal, activity, goal_kcal, created_at')
-    .eq('id', user.id)
+    .eq('id', userId)
     .single();
 
   if (error || !data) return null;
@@ -60,7 +57,8 @@ export async function saveProfile(p: Omit<Profile, 'goal_kcal' | 'created_at'>):
   storage.set(KEY, JSON.stringify(full));
 
   if (user) {
-    await supabase.from('profiles').upsert({ id: user.id, ...full });
+    const { error } = await supabase.from('profiles').upsert({ id: user.id, ...full });
+    if (error) throw new Error(error.message);
   }
 
   return full;
@@ -77,7 +75,8 @@ export async function updateProfile(p: Omit<Profile, 'goal_kcal' | 'created_at'>
   storage.set(KEY, JSON.stringify(full));
 
   if (user) {
-    await supabase.from('profiles').upsert({ id: user.id, ...full });
+    const { error } = await supabase.from('profiles').upsert({ id: user.id, ...full });
+    if (error) throw new Error(error.message);
   }
 
   return full;
