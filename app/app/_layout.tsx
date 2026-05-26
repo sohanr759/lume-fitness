@@ -101,7 +101,12 @@ export default function RootLayout() {
 
     if (!session) {
       currentUserId.current = null;
-      setProfile(null);
+      // Use undefined (not null) so the route guard's "fetch in-flight" check
+      // keeps blocking. When session becomes non-null the profile effect will
+      // start a real fetch; the guard sees profile===undefined → waits.
+      // Using null here would leave stale "no profile" state that the guard
+      // acts on before the fetch result arrives.
+      setProfile(undefined);
       return;
     }
 
