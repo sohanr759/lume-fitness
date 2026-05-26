@@ -73,10 +73,20 @@ export default function RootLayout() {
       settled = true;
       clearTimeout(fallback);
       if (errMsg) {
+        // Exchange failed — store the error and unblock the route guard so it
+        // can redirect to /(auth) with the error message.
         console.error('[Lume] OAuth exchange failed:', errMsg);
         exchangeErrorRef.current = errMsg;
+        if (mounted.current) setWaitingForOAuth(false);
+        return;
       }
-      if (mounted.current) setWaitingForOAuth(false);
+      // Exchange succeeded — do NOT touch waitingForOAuth here.
+      // onAuthStateChange fires SIGNED_IN (or INITIAL_SESSION with the saved
+      // session if SIGNED_IN was missed) and calls setSession + setWaitingForOAuth
+      // in the same synchronous callback, so React batches them into a single
+      // render.  Calling setWaitingForOAuth(false) here races with that and can
+      // produce a render where session is still null but waitingForOAuth is false,
+      // causing the route guard to redirect to auth prematurely.
     });
 
     return () => { clearTimeout(fallback); };
