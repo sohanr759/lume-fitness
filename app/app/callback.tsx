@@ -42,8 +42,14 @@ export default function AuthCallback() {
   }, []);
 
   const showError    = !!exchangeError;
-  const showTimeout  = timedOut && !exchangeError;
+  // Only show the timeout message if the exchange is still pending — not if it already
+  // finished cleanly (which can happen when isOAuthCallback is false, meaning the page
+  // loaded without OAuth params and there was nothing to exchange).
+  const showTimeout  = timedOut && !exchangeDone && !exchangeError;
   const showSpinner  = !exchangeDone && !timedOut;
+  // Show a "no OAuth params" warning when we landed on /callback but there was nothing
+  // to exchange — almost always a misconfigured Supabase redirect URL.
+  const showNoParams = exchangeDone && !exchangeError && !timedOut;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', gap: 20, paddingHorizontal: 32 }}>
@@ -58,6 +64,14 @@ export default function AuthCallback() {
       {showTimeout && (
         <Text variant="label" dim style={{ textAlign: 'center' }}>
           Sign-in is taking longer than expected. You will be redirected back shortly.
+        </Text>
+      )}
+
+      {showNoParams && (
+        <Text variant="label" style={{ color: colors.danger, textAlign: 'center' }}>
+          Sign-in could not complete — the redirect URL is missing the auth code.{'\n\n'}
+          Check that your Supabase project's Redirect URL list includes{'\n'}
+          this app's /callback URL.
         </Text>
       )}
 
