@@ -62,9 +62,10 @@ export const oauthExchangePromise: Promise<string | null> = (() => {
       .catch((e: unknown) => (e instanceof Error ? e.message : 'OAuth exchange failed.'));
   }
 
-  const fullUrl = `${window.location.origin}${window.location.pathname}${_s}`;
+  const code = new URLSearchParams(_s).get('code');
+  if (!code) return Promise.resolve('No auth code found in redirect URL.');
   return supabase.auth
-    .exchangeCodeForSession(fullUrl)
+    .exchangeCodeForSession(code)
     .then(({ error }) => error?.message ?? null)
     .catch((e: unknown) => (e instanceof Error ? e.message : 'OAuth exchange failed.'));
 })();
