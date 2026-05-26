@@ -20,7 +20,7 @@ import { View, ActivityIndicator, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors } from '@/lib/theme';
 import { Text } from '@/components/Text';
-import { oauthExchangePromise } from '@/lib/supabase';
+import { oauthExchangePromise, isOAuthCallback } from '@/lib/supabase';
 
 export default function AuthCallback() {
   const router = useRouter();
@@ -42,14 +42,14 @@ export default function AuthCallback() {
   }, []);
 
   const showError    = !!exchangeError;
-  // Only show the timeout message if the exchange is still pending — not if it already
-  // finished cleanly (which can happen when isOAuthCallback is false, meaning the page
-  // loaded without OAuth params and there was nothing to exchange).
-  const showTimeout  = timedOut && !exchangeDone && !exchangeError;
-  const showSpinner  = !exchangeDone && !timedOut;
-  // Show a "no OAuth params" warning when we landed on /callback but there was nothing
-  // to exchange — almost always a misconfigured Supabase redirect URL.
-  const showNoParams = exchangeDone && !exchangeError && !timedOut;
+  // Timeout: been too long with no resolution. Show regardless of exchange state.
+  const showTimeout  = timedOut && !exchangeError;
+  // No-params: exchange resolved with no error AND there were never any OAuth params
+  // in the URL — almost always a misconfigured Supabase redirect URL.
+  const showNoParams = exchangeDone && !exchangeError && !isOAuthCallback && !timedOut;
+  // Spinner: everything else — exchange in flight, or exchange succeeded and we're
+  // waiting for the route guard to navigate away.
+  const showSpinner  = !showError && !showTimeout && !showNoParams;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', gap: 20, paddingHorizontal: 32 }}>
@@ -75,8 +75,8 @@ export default function AuthCallback() {
         </Text>
       )}
 
-      {/* Escape hatch — visible whenever the exchange is done or timed out */}
-      {(exchangeDone || timedOut) && (
+      {/* Escape hatch — only shown when something went wrong */}
+      {(showError || showTimeout || showNoParams) && (
         <Pressable onPress={() => router.replace('/(auth)' as any)}>
           <Text variant="label" style={{ color: colors.accent, textAlign: 'center' }}>
             Back to sign in
