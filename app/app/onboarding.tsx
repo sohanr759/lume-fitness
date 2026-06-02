@@ -65,7 +65,7 @@ export default function Onboarding() {
       // Update the root layout's profile state BEFORE navigating so the route
       // guard never sees profile=null when it evaluates the new route.
       onProfileSaved(saved);
-      router.replace('/');
+      router.replace('/(tabs)');
     } catch (e: any) {
       Alert.alert('Something went wrong', e?.message ?? 'Could not save your profile. Please try again.');
     } finally {

@@ -161,7 +161,7 @@ export default function RootLayout() {
     }
 
     // ── Profile exists: ensure user is on the main app ────────────────────────
-    if (inAuth || inOnboarding || inCallback) router.replace('/');
+    if (inAuth || inOnboarding || inCallback) router.replace('/(tabs)');
   }, [ready, session, profile, seg0, waitingForOAuth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Splash ───────────────────────────────────────────────────────────────────

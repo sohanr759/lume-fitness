@@ -151,7 +151,7 @@ export default function Log() {
       if (!photo?.uri) throw new Error('Camera did not return a photo. Try again.');
       const res = await analyzeFoodImage(photo.uri);
       notify(NotificationFeedbackType.Success);
-      router.replace('/');
+      router.replace('/(tabs)');
       if (res.needsClarification) {
         Alert.alert('Confirm meal', "Lume wasn't fully sure — tap the entry on Today to refine.");
       }
@@ -215,7 +215,7 @@ export default function Log() {
     logBuiltMeal(builtMeal);
     impact(ImpactFeedbackStyle.Medium);
     notify(NotificationFeedbackType.Success);
-    router.replace('/');
+    router.replace('/(tabs)');
   };
 
   // ── Permission not yet resolved ──────────────────────────────────────────
@@ -246,7 +246,7 @@ export default function Log() {
             textResults={textResults}
             textError={textError}
             onAnalyze={analyzeText}
-            onDone={() => router.replace('/')}
+            onDone={() => router.replace('/(tabs)')}
             onDeleteItem={(id) => {
               deleteFoodLog(id);
               setTextResults((prev) => prev?.filter((f) => f.id !== id) ?? null);
@@ -330,7 +330,7 @@ export default function Log() {
               textResults={textResults}
               textError={textError}
               onAnalyze={analyzeText}
-              onDone={() => router.replace('/')}
+              onDone={() => router.replace('/(tabs)')}
               onDeleteItem={(id) => {
                 deleteFoodLog(id);
                 setTextResults((prev) => prev?.filter((f) => f.id !== id) ?? null);
