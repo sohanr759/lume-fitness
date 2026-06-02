@@ -16,7 +16,7 @@
 // Notes:
 //   - Food logs, workout logs, and profile are cleared on sign out (local-only architecture).
 //   - The "Saved ✓" label reverts to "Save Changes" after 2 seconds.
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import {
   View, TextInput, StyleSheet, ScrollView,
   KeyboardAvoidingView, Platform, Alert, Pressable,
@@ -30,10 +30,12 @@ import {
   Sex, Goal, Activity, computeGoalKcal,
 } from '@/lib/profile';
 import { supabase } from '@/lib/supabase';
+import { AppContext } from '@/app/_layout';
 
 type UnitSystem = 'metric' | 'imperial';
 
 export default function Settings() {
+  const { userId } = useContext(AppContext);
   const saved = getProfileCached();
 
   const [name, setName] = useState(saved?.name ?? '');
@@ -63,7 +65,7 @@ export default function Settings() {
       weight_kg: Number(weightKg) || 70,
       goal,
       activity,
-    });
+    }, userId);
     setJustSaved(true);
     setTimeout(() => setJustSaved(false), 2000);
   };

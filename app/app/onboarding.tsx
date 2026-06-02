@@ -13,7 +13,7 @@ type Step = typeof STEPS[number];
 type UnitSystem = 'metric' | 'imperial';
 
 export default function Onboarding() {
-  const { onProfileSaved } = useContext(AppContext);
+  const { onProfileSaved, userId } = useContext(AppContext);
   const [step, setStep] = useState<Step>('name');
   const [name, setName] = useState('');
   const [sex, setSex] = useState<Sex>('male');
@@ -61,7 +61,7 @@ export default function Onboarding() {
         weight_kg,
         goal,
         activity,
-      });
+      }, userId);
       // Update the root layout's profile state BEFORE navigating so the route
       // guard never sees profile=null when it evaluates the new route.
       onProfileSaved(saved);

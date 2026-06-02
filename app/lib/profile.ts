@@ -48,16 +48,21 @@ export async function fetchProfile(userId: string): Promise<Profile | null> {
 }
 
 // Save profile to Supabase and local cache.
-export async function saveProfile(p: Omit<Profile, 'goal_kcal' | 'created_at'>): Promise<Profile> {
-  const { data: { session } } = await supabase.auth.getSession();
-  const user = session?.user;
+// userId is passed in from the caller (available in _layout.tsx via session.user.id)
+// to avoid calling supabase.auth.getSession() here — in Supabase auth-js v2.103+
+// getSession() re-validates the stored session and can fire SIGNED_OUT if the
+// session fails internal validation, booting the user back to the auth screen.
+export async function saveProfile(
+  p: Omit<Profile, 'goal_kcal' | 'created_at'>,
+  userId: string | null,
+): Promise<Profile> {
   const goal_kcal = computeGoalKcal(p);
   const full: Profile = { ...p, goal_kcal, created_at: Date.now() };
 
   storage.set(KEY, JSON.stringify(full));
 
-  if (user) {
-    const { error } = await supabase.from('profiles').upsert({ id: user.id, ...full });
+  if (userId) {
+    const { error } = await supabase.from('profiles').upsert({ id: userId, ...full });
     if (error) throw new Error(error.message);
   }
 
@@ -65,17 +70,18 @@ export async function saveProfile(p: Omit<Profile, 'goal_kcal' | 'created_at'>):
 }
 
 // Update an existing profile — recalculates goal_kcal, preserves original created_at.
-export async function updateProfile(p: Omit<Profile, 'goal_kcal' | 'created_at'>): Promise<Profile> {
-  const { data: { session } } = await supabase.auth.getSession();
-  const user = session?.user;
+export async function updateProfile(
+  p: Omit<Profile, 'goal_kcal' | 'created_at'>,
+  userId: string | null,
+): Promise<Profile> {
   const existing = getProfileCached();
   const goal_kcal = computeGoalKcal(p);
   const full: Profile = { ...p, goal_kcal, created_at: existing?.created_at ?? Date.now() };
 
   storage.set(KEY, JSON.stringify(full));
 
-  if (user) {
-    const { error } = await supabase.from('profiles').upsert({ id: user.id, ...full });
+  if (userId) {
+    const { error } = await supabase.from('profiles').upsert({ id: userId, ...full });
     if (error) throw new Error(error.message);
   }
 

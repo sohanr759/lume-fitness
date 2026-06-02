@@ -13,8 +13,8 @@ import { supabase, isOAuthCallback, oauthProviderError, oauthExchangePromise } f
 // Provides onProfileSaved so child screens (onboarding) can push the freshly
 // saved profile into the root state immediately, without waiting for a
 // re-fetch or relying on the local cache as a fallback.
-export type AppContextValue = { onProfileSaved: (p: Profile) => void };
-export const AppContext = createContext<AppContextValue>({ onProfileSaved: () => {} });
+export type AppContextValue = { onProfileSaved: (p: Profile) => void; userId: string | null };
+export const AppContext = createContext<AppContextValue>({ onProfileSaved: () => {}, userId: null });
 
 export default function RootLayout() {
   const router   = useRouter();
@@ -173,7 +173,7 @@ export default function RootLayout() {
   }
 
   return (
-    <AppContext.Provider value={{ onProfileSaved }}>
+    <AppContext.Provider value={{ onProfileSaved, userId: session?.user.id ?? null }}>
       <SafeAreaProvider>
         <StatusBar style="light" />
         <Stack
