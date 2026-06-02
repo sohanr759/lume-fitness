@@ -19,7 +19,7 @@
 import { useContext, useState } from 'react';
 import {
   View, TextInput, StyleSheet, ScrollView,
-  KeyboardAvoidingView, Platform, Alert, Pressable,
+  KeyboardAvoidingView, Platform, Pressable, TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
@@ -48,6 +48,7 @@ export default function Settings() {
   const [goal, setGoal] = useState<Goal>(saved?.goal ?? 'maintain');
   const [activity, setActivity] = useState<Activity>(saved?.activity ?? 'moderate');
   const [justSaved, setJustSaved] = useState(false);
+  const [confirmingSignOut, setConfirmingSignOut] = useState(false);
 
   const previewKcal = computeGoalKcal({
     sex,
@@ -72,23 +73,16 @@ export default function Settings() {
     setTimeout(() => setJustSaved(false), 2000);
   };
 
-  const signOut = () => {
-    Alert.alert(
-      'Sign out',
-      'This will clear all local data (meals, workouts, profile). Continue?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign Out',
-          style: 'destructive',
-          onPress: async () => {
-            clearAllLocalData();
-            await supabase.auth.signOut();
-            router.replace('/(auth)');
-          },
-        },
-      ],
-    );
+  const signOut = async () => {
+    if (!confirmingSignOut) {
+      setConfirmingSignOut(true);
+      setTimeout(() => setConfirmingSignOut(false), 3000);
+      return;
+    }
+    setConfirmingSignOut(false);
+    clearAllLocalData();
+    await supabase.auth.signOut();
+    router.replace('/(auth)');
   };
 
   return (
@@ -99,6 +93,7 @@ export default function Settings() {
       >
         <ScrollView
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingBottom: 120 }}
         >
           <View style={{ paddingTop: space.lg }}>
@@ -183,9 +178,11 @@ export default function Settings() {
 
           {/* Sign out */}
           <View style={{ marginTop: space.xl }}>
-            <Pressable onPress={signOut} style={styles.dangerBtn}>
-              <Text variant="label" style={{ color: colors.danger }}>Sign Out</Text>
-            </Pressable>
+            <TouchableOpacity onPress={signOut} style={styles.dangerBtn} activeOpacity={0.7}>
+              <Text variant="label" style={{ color: colors.danger }}>
+                {confirmingSignOut ? 'Tap again to confirm' : 'Sign Out'}
+              </Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

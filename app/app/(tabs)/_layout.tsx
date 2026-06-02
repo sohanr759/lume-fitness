@@ -23,7 +23,7 @@ export default function TabsLayout() {
         tabBarLabelStyle: { ...type.label, marginBottom: 6 },
         tabBarStyle: styles.bar,
         tabBarBackground: () => (
-          <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill}>
+          <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none">
             <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(10,10,10,0.6)' }]} />
           </BlurView>
         ),
