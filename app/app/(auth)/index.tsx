@@ -33,10 +33,14 @@ import { supabase } from '@/lib/supabase';
 type Mode = 'signin' | 'signup';
 
 function getRedirectTo(): string | undefined {
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    return `${window.location.origin}/callback`;
-  }
-  return undefined;
+  if (Platform.OS !== 'web') return undefined;
+  // Always use the fixed production URL so the PKCE code verifier (stored in
+  // localStorage during sign-in) is on the same origin as the callback page.
+  // Dynamic window.location.origin caused origin mismatches when the app was
+  // accessed from preview or staging URLs that weren't the configured Supabase
+  // redirect URL, breaking the PKCE exchange.
+  const appUrl = process.env.EXPO_PUBLIC_APP_URL ?? 'https://lume-fitness.vercel.app';
+  return `${appUrl.replace(/\/$/, '')}/callback`;
 }
 
 // ─── OAuth buttons ────────────────────────────────────────────────────────────

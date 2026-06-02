@@ -67,5 +67,15 @@ export const oauthExchangePromise: Promise<string | null> = (() => {
   return supabase.auth
     .exchangeCodeForSession(code)
     .then(({ error }) => error?.message ?? null)
-    .catch((e: unknown) => (e instanceof Error ? e.message : 'OAuth exchange failed.'));
+    .catch((e: unknown) => {
+      const msg = e instanceof Error ? e.message : 'OAuth exchange failed.';
+      // PKCE verifier missing → almost always a cross-origin redirect: the
+      // sign-in page and the callback URL are on different origins so
+      // localStorage (which is per-origin) doesn't carry the verifier across.
+      // Fix: add all possible origins to Supabase's Redirect URL allowlist.
+      if (msg.toLowerCase().includes('code verifier') || msg.toLowerCase().includes('pkce')) {
+        return 'Sign-in session expired — please try again. (If this keeps happening, check that your app URL is listed in Supabase → Authentication → Redirect URLs.)';
+      }
+      return msg;
+    });
 })();
