@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
     const { text, weight_kg } = await req.json();
     if (!text) return json({ error: 'text required' }, 400);
 
-    const parsed = await geminiJson<Parsed>({ prompt: `${PROMPT}\n${text}`, timeoutMs: 6000 });
+    const parsed = await geminiJson<Parsed>({ prompt: `${PROMPT}\n${text}`, timeoutMs: 9000 });
 
     const weight = Number(weight_kg ?? 70);
     const { met, category: fallbackCat } = lookupMet(parsed.name);

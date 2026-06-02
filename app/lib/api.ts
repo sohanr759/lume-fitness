@@ -101,9 +101,18 @@ export async function logWorkoutText(text: string): Promise<WorkoutLog> {
   }
   const { data, error } = invokeResult;
   if (error) {
+    const ctx = (error as any).context;
     let body: any = null;
-    try { body = await (error as any).context?.json(); } catch {}
-    const msg = body?.error ?? error.message ?? 'unknown error';
+    if (ctx && typeof ctx.json === 'function') {
+      body = await ctx.json().catch(() => null);
+    } else if (ctx && typeof ctx === 'object') {
+      body = ctx; // already-parsed object in newer supabase-js versions
+    }
+    if (!body && ctx && typeof ctx.text === 'function') {
+      const raw = await ctx.text().catch(() => '');
+      try { body = JSON.parse(raw); } catch { /* ignore */ }
+    }
+    const msg = body?.error ?? body?.message ?? error.message ?? 'unknown error';
     console.error('[logWorkoutText] edge fn error:', msg, '\nraw:', error);
     throw new Error(msg);
   }

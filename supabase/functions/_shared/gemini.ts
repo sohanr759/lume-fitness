@@ -25,13 +25,23 @@ export async function geminiJson<T>(opts: {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts }],
-        generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.2,
+          // Disable thinking — fast structured extraction doesn't need it and
+          // thinking tokens appear as extra parts that break JSON parsing.
+          thinkingConfig: { thinkingBudget: 0 },
+        },
       }),
       signal: ctrl.signal,
     });
     if (!res.ok) throw new Error(`gemini ${res.status}: ${await res.text()}`);
     const json = await res.json();
-    const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+    // Gemini 2.5 thinking models may include thought parts (thought: true).
+    // Find the actual response part — the one without the thought flag.
+    const responseParts: any[] = json.candidates?.[0]?.content?.parts ?? [];
+    const responsePart = responseParts.find((p: any) => !p.thought) ?? responseParts[0];
+    const text = responsePart?.text;
     if (!text) throw new Error('gemini empty response');
     const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/,'').trim();
     return JSON.parse(cleaned) as T;

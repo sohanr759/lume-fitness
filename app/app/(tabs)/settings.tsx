@@ -8,7 +8,7 @@
 // Inputs:  Reads current profile from getProfileCached() to pre-populate form fields.
 //
 // Outputs: Calls updateProfile() on save, clearAllLocalData() + supabase.auth.signOut() on logout.
-//          Navigation after logout is handled by the root _layout.tsx auth listener.
+//          Navigation after logout goes to /(auth) directly via router.replace.
 //
 // Dependencies: lib/profile.ts, lib/supabase.ts, lib/theme.ts,
 //               components/Screen, components/Text, components/Button
@@ -21,6 +21,7 @@ import {
   View, TextInput, StyleSheet, ScrollView,
   KeyboardAvoidingView, Platform, Alert, Pressable,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Screen } from '@/components/Screen';
 import { Text } from '@/components/Text';
 import { Button } from '@/components/Button';
@@ -36,6 +37,7 @@ type UnitSystem = 'metric' | 'imperial';
 
 export default function Settings() {
   const { userId } = useContext(AppContext);
+  const router = useRouter();
   const saved = getProfileCached();
 
   const [name, setName] = useState(saved?.name ?? '');
@@ -82,7 +84,7 @@ export default function Settings() {
           onPress: async () => {
             clearAllLocalData();
             await supabase.auth.signOut();
-            // onAuthStateChange in _layout.tsx fires → routes to /(auth)/
+            router.replace('/(auth)');
           },
         },
       ],

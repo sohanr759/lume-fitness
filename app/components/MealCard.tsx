@@ -13,7 +13,7 @@ export function MealCard({ item, onDelete }: { item: FoodLog; onDelete?: () => v
         <View style={[styles.thumb, { backgroundColor: colors.surfaceElevated }]} />
       )}
       <View style={{ flex: 1, marginLeft: space.md }}>
-        <Text variant="title" numberOfLines={1}>{item.name}</Text>
+        <Text variant="title">{item.name}</Text>
         <View style={{ height: 2 }} />
         <Text variant="label" dim>
           {item.macros.protein}P · {item.macros.carbs}C · {item.macros.fat}F
@@ -30,7 +30,7 @@ export function MealCard({ item, onDelete }: { item: FoodLog; onDelete?: () => v
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingVertical: space.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.hairline,

@@ -226,45 +226,60 @@ export default function Log() {
   if (!perm.granted) {
     return (
       <Screen>
-        <View style={{ paddingTop: space.lg }}>
-          <SegmentedControl mode={mode} onChange={setMode} />
-        </View>
-        {mode === 'photo' ? (
-          <View style={styles.center}>
-            <Text variant="title">Camera access</Text>
-            <Text variant="body" dim style={{ textAlign: 'center', marginTop: space.sm }}>
-              Lume needs your camera to log meals from a single tap.
-            </Text>
-            <View style={{ height: space.lg }} />
-            <Button label="Allow Camera" onPress={requestPerm} />
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={100}
+        >
+          <View style={{ paddingTop: space.lg }}>
+            <SegmentedControl mode={mode} onChange={setMode} />
           </View>
-        ) : mode === 'text' ? (
-          <TextModeContent
-            textInput={textInput}
-            setTextInput={setTextInput}
-            textBusy={textBusy}
-            textResults={textResults}
-            textError={textError}
-            onAnalyze={analyzeText}
-            onDone={() => router.replace('/(tabs)')}
-            onDeleteItem={(id) => {
-              deleteFoodLog(id);
-              setTextResults((prev) => prev?.filter((f) => f.id !== id) ?? null);
-            }}
-          />
-        ) : (
-          <BuildModeContent
-            buildIngredients={buildIngredients}
-            setBuildIngredients={setBuildIngredients}
-            buildTargetKcal={buildTargetKcal}
-            setBuildTargetKcal={setBuildTargetKcal}
-            buildBusy={buildBusy}
-            builtMeal={builtMeal}
-            buildError={buildError}
-            onBuild={buildMealHandler}
-            onLog={confirmBuildLog}
-          />
-        )}
+          {mode === 'photo' ? (
+            <View style={styles.center}>
+              <Text variant="title">Camera access</Text>
+              <Text variant="body" dim style={{ textAlign: 'center', marginTop: space.sm }}>
+                Lume needs your camera to log meals from a single tap.
+              </Text>
+              <View style={{ height: space.lg }} />
+              <Button label="Allow Camera" onPress={requestPerm} />
+            </View>
+          ) : (
+            <ScrollView
+              style={{ flex: 1 }}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 140 }}
+              keyboardShouldPersistTaps="handled"
+            >
+              {mode === 'text' ? (
+                <TextModeContent
+                  textInput={textInput}
+                  setTextInput={setTextInput}
+                  textBusy={textBusy}
+                  textResults={textResults}
+                  textError={textError}
+                  onAnalyze={analyzeText}
+                  onDone={() => router.replace('/(tabs)')}
+                  onDeleteItem={(id) => {
+                    deleteFoodLog(id);
+                    setTextResults((prev) => prev?.filter((f) => f.id !== id) ?? null);
+                  }}
+                />
+              ) : (
+                <BuildModeContent
+                  buildIngredients={buildIngredients}
+                  setBuildIngredients={setBuildIngredients}
+                  buildTargetKcal={buildTargetKcal}
+                  setBuildTargetKcal={setBuildTargetKcal}
+                  buildBusy={buildBusy}
+                  builtMeal={builtMeal}
+                  buildError={buildError}
+                  onBuild={buildMealHandler}
+                  onLog={confirmBuildLog}
+                />
+              )}
+            </ScrollView>
+          )}
+        </KeyboardAvoidingView>
       </Screen>
     );
   }
@@ -318,6 +333,7 @@ export default function Log() {
           <SegmentedControl mode={mode} onChange={setMode} />
         </View>
         <ScrollView
+          style={{ flex: 1 }}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 140 }}
           keyboardShouldPersistTaps="handled"
